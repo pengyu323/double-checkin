@@ -277,4 +277,25 @@ export async function supabaseMarkMessageRead(messageId: string): Promise<void> 
   await supabase.from('messages').update({ read: true }).eq('id', messageId)
 }
 
+/** 订阅「我的消息」表的新增，用于实时收到「伙伴已打卡」等提示 */
+export function supabaseSubscribeMessages(userId: string, onMessagesChanged: () => void): () => void {
+  if (!supabase) return () => {}
+  const channel = supabase
+    .channel('messages-realtime')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `user_id=eq.${userId}`,
+      },
+      () => onMessagesChanged()
+    )
+    .subscribe()
+  return () => {
+    supabase.removeChannel(channel)
+  }
+}
+
 export { isSupabaseEnabled }

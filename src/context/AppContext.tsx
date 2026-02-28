@@ -18,6 +18,7 @@ import {
   supabaseAddMessage,
   supabaseAddMessageForPartner,
   supabaseMarkMessageRead,
+  supabaseSubscribeMessages,
 } from '../lib/supabaseApi'
 
 type AppState = {
@@ -118,6 +119,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true }
   }, [state.supabaseMode])
 
+  // 消息实时更新：订阅 messages 表 INSERT，有新消息时重新拉取
+  useEffect(() => {
+    if (!state.supabaseMode || !state.user?.id) return
+    const userId = state.user.id
+    const unsubscribe = supabaseSubscribeMessages(userId, () => {
+      supabaseGetMessages(userId).then((messages) => {
+        setState((s) => ({ ...s, messages }))
+      })
+    })
+    return unsubscribe
+  }, [state.supabaseMode, state.user?.id])
+
   const login = useCallback(
     async (nickname: string): Promise<User | { error: string }> => {
       if (state.supabaseMode) {
@@ -197,7 +210,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             title: '伙伴已打卡',
             body: '明日可在「消息」页为 TA 的今日打卡评分',
             extra: { checkInDate: date },
-          }).then(() => refresh())
+          }).then((res) => {
+            if (res?.error) console.error('[评分提示] 给伙伴发消息失败:', res.error)
+          }).catch((e) => console.error('[评分提示] 给伙伴发消息异常:', e))
         }
         return result.checkIn
       }
