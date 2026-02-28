@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
-import { todayStr } from '../storage'
 
 function getDaysInMonth(year: number, month: number) {
   const first = new Date(year, month - 1, 1)
@@ -54,7 +53,6 @@ export default function ComparePage() {
   }, [partner, checkIns])
 
   const myDates = useMemo(() => new Set(myCheckIns.map((c) => c.date)), [myCheckIns])
-  const partnerDates = useMemo(() => new Set(partnerCheckIns.map((c) => c.date)), [partnerCheckIns])
 
   const days = useMemo(
     () => getDaysInMonth(calendarMonth.year, calendarMonth.month),
@@ -63,9 +61,6 @@ export default function ComparePage() {
 
   const selectedCheckIn = selectedDate
     ? myCheckIns.find((c) => c.date === selectedDate)
-    : null
-  const selectedPartnerCheckIn = selectedDate && partner
-    ? partnerCheckIns.find((c) => c.date === selectedDate)
     : null
 
   const myRatingsReceived = useMemo(() => {

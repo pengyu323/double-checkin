@@ -4,6 +4,77 @@
 
 ---
 
+## 方式一：不用 GitHub，直接上传 ZIP（推荐，无需梯子）
+
+适合本机连不上 GitHub 时使用。
+
+### 1. 准备 ZIP（不要包含 node_modules）
+
+**方法 A：在资源管理器中手动排除 node_modules**
+
+1. 打开文件夹：`C:\Users\XingYu\Desktop\双人减肥打卡记录`
+2. 按 **Ctrl + A** 全选
+3. 按住 **Ctrl**，再点一下 **node_modules** 文件夹，取消勾选它（其他都保持选中）
+4. 在选中项上 **右键** → **发送到** → **压缩(zipped)文件夹**
+5. 得到 `双人减肥打卡记录.zip`（或你起的名字），记住保存位置
+
+**方法 B：用命令行打 zip（PowerShell）**
+
+在 PowerShell 里执行（会生成到桌面，且自动排除 node_modules）：
+
+```powershell
+cd C:\Users\XingYu\Desktop\双人减肥打卡记录
+$files = Get-ChildItem -Exclude node_modules
+Compress-Archive -Path $files -DestinationPath "C:\Users\XingYu\Desktop\double-checkin.zip" -Force
+```
+
+桌面会多一个 `double-checkin.zip`。
+
+---
+
+### 2. 在 Vercel 上传并部署
+
+1. 打开 [vercel.com](https://vercel.com)，用 **邮箱** 或 GitHub 登录
+2. 点右上角 **Add New…** → **Project**
+3. 在页面里找 **“Deploy without Git”** 或 **“Upload”** 或 **“Continue with ZIP”** 等入口（若只看到 Git 仓库列表，往下滚动或看上方 Tab 是否有 “Upload”）
+4. **上传** 刚准备好的 zip 文件（拖进去或点选文件）
+5. 项目名称可保持默认（如 `double-checkin`）
+6. **Framework Preset** 选 **Vite**；**Build Command** 留空或填 `npm run build`；**Output Directory** 填 `dist`
+7. **先不要点 Deploy**，先配置环境变量（见下一步）；若已经点了 Deploy，部署完再补环境变量并 Redeploy 即可
+
+---
+
+### 3. 配置环境变量（Supabase）
+
+**若在上传页有 “Environment Variables” 或 “Configure”：**
+
+- 点开，添加两条：
+
+| 名称 Name | 值 Value |
+|-----------|----------|
+| `VITE_SUPABASE_URL` | 你的 Supabase 项目 URL，如 `https://xxxxx.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | 你的 Supabase **anon public** 密钥（一长串字符） |
+
+- 环境选择 **Production**（或全选），保存后再点 **Deploy**。
+
+**若上传时没有环境变量入口，部署完成后：**
+
+1. 进入该项目的 **Dashboard**
+2. 顶部点 **Settings** → 左侧 **Environment Variables**
+3. 添加同上两条变量（Name / Value）
+4. 保存后，点 **Deployments** → 最新一次部署右侧 **⋯** → **Redeploy**，勾选 **Use existing Build Cache** 可省略，直接 **Redeploy**
+
+---
+
+### 4. 拿到链接并分享
+
+- 部署成功后，在 **Deployments** 里点开最新一次，或项目首页会显示 **Visit** 链接，例如：`https://double-checkin-xxx.vercel.app`
+- 把这个链接发给朋友；你俩都打开同一链接，你点「邀请伙伴」拿邀请码，朋友点「加入伙伴」输入邀请码即可绑定。
+
+---
+
+## 方式二：通过 GitHub 部署（需能访问 GitHub）
+
 ## 前提
 
 - 已按 README 配置好 **Supabase**（建表、匿名登录、拿到 URL 和 anon key）

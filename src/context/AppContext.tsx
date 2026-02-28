@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useCallback, useMemo, useState, useEffect } from 'react'
 import type { User, PartnerBinding, CheckIn, Rating, AppMessage } from '../types'
-import { storage, genId, todayStr, canCheckIn, canRate, isRatingExpired } from '../storage'
+import { storage, genId, todayStr, canCheckIn } from '../storage'
 import {
   isSupabaseEnabled,
   supabaseGetCurrentUser,

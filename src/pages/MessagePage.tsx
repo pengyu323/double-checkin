@@ -1,11 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { todayStr } from '../storage'
 import { canRate, isRatingExpired } from '../storage'
 
 export default function MessagePage() {
-  const { user, partner, checkIns, ratings, messages, getRating, getPartnerCheckInForDate, submitRating, markMessageRead } = useApp()
-  const today = todayStr()
+  const { user, partner, ratings, messages, getRating, getPartnerCheckInForDate, submitRating, markMessageRead } = useApp()
 
   const yesterday = useMemo(() => {
     const d = new Date()
@@ -14,7 +12,7 @@ export default function MessagePage() {
   }, [])
 
   const partnerYesterdayCheckIn = partner ? getPartnerCheckInForDate(yesterday) : null
-  const hasRatedYesterday = partnerYesterdayCheckIn ? getRating(yesterday, partner.partnerId) : null
+  const hasRatedYesterday = partner && partnerYesterdayCheckIn ? getRating(yesterday, partner.partnerId) : null
   const needRate = partner && partnerYesterdayCheckIn && !hasRatedYesterday && canRate(yesterday) && !isRatingExpired(yesterday)
 
   const [rateComplete, setRateComplete] = useState(3)
