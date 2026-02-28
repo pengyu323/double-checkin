@@ -280,7 +280,8 @@ export async function supabaseMarkMessageRead(messageId: string): Promise<void> 
 /** 订阅「我的消息」表的新增，用于实时收到「伙伴已打卡」等提示 */
 export function supabaseSubscribeMessages(userId: string, onMessagesChanged: () => void): () => void {
   if (!supabase) return () => {}
-  const channel = supabase
+  const client = supabase
+  const channel = client
     .channel('messages-realtime')
     .on(
       'postgres_changes',
@@ -294,7 +295,7 @@ export function supabaseSubscribeMessages(userId: string, onMessagesChanged: () 
     )
     .subscribe()
   return () => {
-    supabase.removeChannel(channel)
+    client.removeChannel(channel)
   }
 }
 
