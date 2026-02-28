@@ -264,6 +264,14 @@ export async function supabaseAddMessage(
   return error ? { error: error.message } : {}
 }
 
+/** 给伙伴发一条消息（用于打卡后通知对方去评分），仅当对方是自己的绑定伙伴时 RLS 允许 */
+export async function supabaseAddMessageForPartner(
+  partnerUserId: string,
+  msg: Omit<AppMessage, 'id' | 'read' | 'date'>
+): Promise<{ error?: string }> {
+  return supabaseAddMessage(partnerUserId, msg)
+}
+
 export async function supabaseMarkMessageRead(messageId: string): Promise<void> {
   if (!supabase) return
   await supabase.from('messages').update({ read: true }).eq('id', messageId)

@@ -16,6 +16,7 @@ import {
   supabaseUpsertCheckIn,
   supabaseUpsertRating,
   supabaseAddMessage,
+  supabaseAddMessageForPartner,
   supabaseMarkMessageRead,
 } from '../lib/supabaseApi'
 
@@ -190,6 +191,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           const rest = s.checkIns.filter((c) => !(c.userId === user.id && c.date === date))
           return { ...s, checkIns: [result.checkIn, ...rest] }
         })
+        if (state.partner) {
+          supabaseAddMessageForPartner(state.partner.partnerId, {
+            type: 'partner_done',
+            title: '伙伴已打卡',
+            body: '明日可在「消息」页为 TA 的今日打卡评分',
+            extra: { checkInDate: date },
+          }).then(() => refresh())
+        }
         return result.checkIn
       }
       const existing = state.checkIns.find((c) => c.userId === user.id && c.date === date)
