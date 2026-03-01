@@ -43,8 +43,8 @@ export default function MessagePage() {
     setRemindTip('')
     const res = await remindPartnerToRate()
     setRemindLoading(false)
-    if (res?.ok) setRemindTip('已提醒伙伴，TA 会在消息里收到')
-    if (res?.error) setRemindTip(res.error)
+    if (res && 'ok' in res) setRemindTip('已提醒伙伴，TA 会在消息里收到')
+    if (res && 'error' in res) setRemindTip(res.error)
   }
 
   const handleSubmitRating = async () => {
