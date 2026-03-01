@@ -484,7 +484,7 @@ export default function ComparePage() {
                 <span>努力度 {latestRatingFromPartner.effort}★</span>
               </div>
               {latestRatingFromPartner.comment && (
-                <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.5 }}「{latestRatingFromPartner.comment}」</div>
+                <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.5 }}>{`「${latestRatingFromPartner.comment}」`}</div>
               )}
             </div>
           )}
