@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useCallback, useMemo, useState, useEffect } from 'react'
 import type { User, PartnerBinding, CheckIn, Rating, AppMessage } from '../types'
-import { storage, genId, todayStr, canCheckIn } from '../storage'
+import { storage, genId, todayStr, canCheckIn, canRate, isRatingExpired } from '../storage'
 import {
   isSupabaseEnabled,
   supabaseGetCurrentUser,
@@ -41,6 +41,8 @@ type AppActions = {
   getCheckIn: (date: string, userId?: string) => CheckIn | undefined
   submitRating: (toUserId: string, checkInDate: string, checkInId: string, completeness: number, effort: number, comment?: string) => Promise<void>
   getRating: (checkInDate: string, toUserId: string) => Rating | undefined
+  getRatingFromPartner: (checkInDate: string) => Rating | undefined
+  remindPartnerToRate: () => Promise<{ ok: true } | { error: string }>
   addMessage: (msg: Omit<AppMessage, 'id' | 'read' | 'date'>) => void
   markMessageRead: (id: string) => void
   getMyCheckInForDate: (date: string) => CheckIn | undefined
@@ -205,10 +207,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           return { ...s, checkIns: [result.checkIn, ...rest] }
         })
         if (state.partner) {
+          const c = result.checkIn
+          const summary = [
+            `体重 ${c.weight ?? '-'} kg`,
+            `运动 ${c.sportType ?? '-'} ${c.sportMinutes ?? 0} 分钟`,
+            `早/午/晚 ${c.breakfast || '-'} / ${c.lunch || '-'} / ${c.dinner || '-'}`,
+            `饮水 ${c.waterCups ?? '-'} 杯${c.waterMl ? ` ${c.waterMl} ml` : ''}`,
+            `睡眠 ${c.sleepHours ?? '-'} 小时`,
+            `心情 ${c.mood || '-'}`,
+          ].join('；')
           supabaseAddMessageForPartner(state.partner.partnerId, {
             type: 'partner_done',
             title: '伙伴已打卡',
-            body: '明日可在「消息」页为 TA 的今日打卡评分',
+            body: `可立即在「消息」页为 TA 的今日打卡评分。\nTA 今日：${summary}`,
             extra: { checkInDate: date },
           }).then((res) => {
             if (res?.error) console.error('[评分提示] 给伙伴发消息失败:', res.error)
@@ -310,6 +321,62 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [state.ratings, state.user?.id]
   )
 
+  /** 伙伴是否已对我在某日的打卡评过分 */
+  const getRatingFromPartner = useCallback(
+    (checkInDate: string) => {
+      const myId = state.user?.id ?? storage.user.get()?.id
+      const partnerId = state.partner?.partnerId ?? storage.partner.get()?.partnerId
+      if (!myId || !partnerId) return undefined
+      return state.ratings.find(
+        (r) => r.fromUserId === partnerId && r.toUserId === myId && r.checkInDate === checkInDate
+      )
+    },
+    [state.ratings, state.user?.id, state.partner?.partnerId]
+  )
+
+  /** 手动提醒伙伴为我的今日或昨日打卡评分（今日优先；若今日未评则次日仍可提醒昨日） */
+  const remindPartnerToRate = useCallback(async (): Promise<{ ok: true } | { error: string }> => {
+    if (!state.supabaseMode || !state.user || !state.partner) return { error: '未绑定伙伴或非联网模式' }
+    const today = todayStr()
+    const yesterday = (() => {
+      const d = new Date()
+      d.setDate(d.getDate() - 1)
+      return d.toISOString().slice(0, 10)
+    })()
+    const myToday = state.checkIns.find((c) => c.userId === state.user!.id && c.date === today)
+    const myYesterday = state.checkIns.find((c) => c.userId === state.user!.id && c.date === yesterday)
+    const partnerRatedToday = state.ratings.some(
+      (r) => r.fromUserId === state.partner!.partnerId && r.toUserId === state.user!.id && r.checkInDate === today
+    )
+    const partnerRatedYesterday = state.ratings.some(
+      (r) => r.fromUserId === state.partner!.partnerId && r.toUserId === state.user!.id && r.checkInDate === yesterday
+    )
+    if (myToday && !partnerRatedToday) {
+      const res = await supabaseAddMessageForPartner(state.partner.partnerId, {
+        type: 'remind_rate',
+        title: 'TA 提醒你评分',
+        body: `可立即在「消息」页为 TA 的今日（${today}）打卡评分哦`,
+        extra: { checkInDate: today },
+      })
+      if (res?.error) return { error: res.error }
+      return { ok: true }
+    }
+    if (myYesterday && !partnerRatedYesterday && canRate(yesterday) && !isRatingExpired(yesterday)) {
+      const res = await supabaseAddMessageForPartner(state.partner.partnerId, {
+        type: 'remind_rate',
+        title: 'TA 提醒你评分',
+        body: `记得在「消息」页为 TA 的昨日（${yesterday}）打卡评分哦`,
+        extra: { checkInDate: yesterday },
+      })
+      if (res?.error) return { error: res.error }
+      return { ok: true }
+    }
+    if (myToday && partnerRatedToday) return { error: '伙伴已为你的今日打卡评过分了' }
+    if (myYesterday && partnerRatedYesterday) return { error: '伙伴已为你的昨日打卡评过分了' }
+    if (myYesterday && (!canRate(yesterday) || isRatingExpired(yesterday))) return { error: '已过评分期限' }
+    return { error: '暂无待评分的打卡' }
+  }, [state.supabaseMode, state.user, state.partner, state.checkIns, state.ratings])
+
   const addMessage = useCallback(
     (msg: Omit<AppMessage, 'id' | 'read' | 'date'>) => {
       if (state.supabaseMode && state.user) {
@@ -356,6 +423,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       getCheckIn,
       submitRating,
       getRating,
+      getRatingFromPartner,
+      remindPartnerToRate,
       addMessage,
       markMessageRead,
       getMyCheckInForDate,
@@ -373,6 +442,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       getCheckIn,
       submitRating,
       getRating,
+      getRatingFromPartner,
+      remindPartnerToRate,
       addMessage,
       markMessageRead,
       getMyCheckInForDate,
