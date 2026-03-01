@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import { canRate, isRatingExpired, todayStr } from '../storage'
 
@@ -16,12 +16,15 @@ export default function MessagePage() {
   const partnerYesterdayCheckIn = partner ? getPartnerCheckInForDate(yesterday) : null
   const hasRatedToday = partner && partnerTodayCheckIn ? getRating(today, partner.partnerId) : null
   const hasRatedYesterday = partner && partnerYesterdayCheckIn ? getRating(yesterday, partner.partnerId) : null
-  const needRateToday = partner && partnerTodayCheckIn && !hasRatedToday
   const needRateYesterday = partner && partnerYesterdayCheckIn && !hasRatedYesterday && canRate(yesterday) && !isRatingExpired(yesterday)
-  const needRate = needRateToday || needRateYesterday
-  const pendingCheckIn = needRateToday ? partnerTodayCheckIn : partnerYesterdayCheckIn
-  const pendingDate = needRateToday ? today : yesterday
-  const pendingLabel = needRateToday ? '伙伴今日打卡' : '伙伴昨日打卡'
+  /** 今日：无论是否已评都显示卡片（已评则可修改，以 24 点前最后一次为准）；昨日：仅未评且在有效期内显示 */
+  const showRateCard = (partner && partnerTodayCheckIn) || needRateYesterday
+  const pendingCheckIn = partnerTodayCheckIn ? partnerTodayCheckIn : partnerYesterdayCheckIn
+  const pendingDate = partnerTodayCheckIn ? today : yesterday
+  const pendingLabel =
+    partnerTodayCheckIn
+      ? (hasRatedToday ? '修改今日评分 · 伙伴今日打卡' : '待评分 · 伙伴今日打卡')
+      : '伙伴昨日打卡'
 
   const myTodayCheckIn = user ? getMyCheckInForDate(today) : null
   const myYesterdayCheckIn = user ? getMyCheckInForDate(yesterday) : null
@@ -36,6 +39,19 @@ export default function MessagePage() {
   const [rateComment, setRateComment] = useState('')
   const [remindLoading, setRemindLoading] = useState(false)
   const [remindTip, setRemindTip] = useState('')
+
+  /** 切换待评/修改的日期或已有评分时，同步表单：修改今日评分时预填，否则默认 3/3/空 */
+  useEffect(() => {
+    if (pendingDate === today && hasRatedToday) {
+      setRateComplete(hasRatedToday.completeness)
+      setRateEffort(hasRatedToday.effort)
+      setRateComment(hasRatedToday.comment ?? '')
+    } else {
+      setRateComplete(3)
+      setRateEffort(3)
+      setRateComment('')
+    }
+  }, [pendingDate, today, hasRatedToday])
 
   const handleRemindPartner = async () => {
     if (!canRemindPartner || remindLoading) return
@@ -84,7 +100,7 @@ export default function MessagePage() {
         </div>
       )}
 
-      {needRate && pendingCheckIn && (
+      {showRateCard && pendingCheckIn && (
         <div className="card" style={{ border: '2px solid var(--primary)' }}>
           <div style={{ fontWeight: 600, marginBottom: 8 }}>待评分 · {pendingLabel}</div>
           <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 12 }}>
@@ -160,7 +176,7 @@ export default function MessagePage() {
             rows={2}
           />
           <button type="button" className="btn-primary" onClick={handleSubmitRating}>
-            提交评分
+            {pendingDate === today && hasRatedToday ? '更新评分' : '提交评分'}
           </button>
         </div>
       )}
