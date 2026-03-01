@@ -496,7 +496,7 @@ export default function ComparePage() {
             style={{
               width: '100%',
               padding: '12px 16px',
-              borderRadius: var(--radius),
+              borderRadius: 'var(--radius)',
               background: 'var(--bg)',
               color: 'var(--text)',
               fontWeight: 500,
