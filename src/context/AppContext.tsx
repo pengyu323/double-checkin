@@ -200,15 +200,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const date = todayStr()
       if (!canCheckIn(date)) return null
       if (state.supabaseMode) {
+        const existingToday = state.checkIns.find((c) => c.userId === user.id && c.date === date)
+        const hadCheckInToday = !!existingToday
         const result = await supabaseUpsertCheckIn(user.id, date, data)
         if ('error' in result) return null
         setState((s) => {
           const rest = s.checkIns.filter((c) => !(c.userId === user.id && c.date === date))
           return { ...s, checkIns: [result.checkIn, ...rest] }
         })
-        if (state.partner) {
-          const c = result.checkIn
-          const summary = [
+        const buildSummary = (c: CheckIn) =>
+          [
             `体重 ${c.weight ?? '-'} kg`,
             `运动 ${c.sportType ?? '-'} ${c.sportMinutes ?? 0} 分钟`,
             `早/午/晚 ${c.breakfast || '-'} / ${c.lunch || '-'} / ${c.dinner || '-'}`,
@@ -216,14 +217,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             `睡眠 ${c.sleepHours ?? '-'} 小时`,
             `心情 ${c.mood || '-'}`,
           ].join('；')
-          supabaseAddMessageForPartner(state.partner.partnerId, {
-            type: 'partner_done',
-            title: '伙伴已打卡',
-            body: `可立即在「消息」页为 TA 的今日打卡评分。\nTA 今日：${summary}`,
-            extra: { checkInDate: date },
-          }).then((res) => {
-            if (res?.error) console.error('[评分提示] 给伙伴发消息失败:', res.error)
-          }).catch((e) => console.error('[评分提示] 给伙伴发消息异常:', e))
+        const contentChanged =
+          existingToday &&
+          (existingToday.weight !== data.weight ||
+            existingToday.bodyFat !== data.bodyFat ||
+            (existingToday.sportType ?? '') !== (data.sportType ?? '') ||
+            (existingToday.sportMinutes ?? 0) !== (data.sportMinutes ?? 0) ||
+            (existingToday.breakfast ?? '') !== (data.breakfast ?? '') ||
+            (existingToday.lunch ?? '') !== (data.lunch ?? '') ||
+            (existingToday.dinner ?? '') !== (data.dinner ?? '') ||
+            (existingToday.waterCups ?? 0) !== (data.waterCups ?? 0) ||
+            (existingToday.waterMl ?? 0) !== (data.waterMl ?? 0) ||
+            (existingToday.sleepHours ?? 0) !== (data.sleepHours ?? 0) ||
+            (existingToday.mood ?? '') !== (data.mood ?? ''))
+        if (state.partner) {
+          if (!hadCheckInToday) {
+            supabaseAddMessageForPartner(state.partner.partnerId, {
+              type: 'partner_done',
+              title: '伙伴已打卡',
+              body: `可立即在「消息」页为 TA 的今日打卡评分。\nTA 今日：${buildSummary(result.checkIn)}`,
+              extra: { checkInDate: date },
+            }).then((res) => {
+              if (res?.error) console.error('[评分提示] 给伙伴发消息失败:', res.error)
+            }).catch((e) => console.error('[评分提示] 给伙伴发消息异常:', e))
+          } else if (contentChanged) {
+            supabaseAddMessageForPartner(state.partner.partnerId, {
+              type: 'partner_done',
+              title: '伙伴已更新今日打卡',
+              body: `TA 更新了今日打卡内容，可到「消息」页查看并评分。\nTA 今日：${buildSummary(result.checkIn)}`,
+              extra: { checkInDate: date },
+            }).then((res) => {
+              if (res?.error) console.error('[评分提示] 给伙伴发消息失败:', res.error)
+            }).catch((e) => console.error('[评分提示] 给伙伴发消息异常:', e))
+          }
         }
         return result.checkIn
       }

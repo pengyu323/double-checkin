@@ -1,6 +1,36 @@
 import { useState, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 
+/** 本周一 00:00 对应的日期字符串（按中国周一到周日） */
+function getThisWeekStart(): string {
+  const now = new Date()
+  const day = now.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  const mon = new Date(now)
+  mon.setDate(now.getDate() + diff)
+  return mon.toISOString().slice(0, 10)
+}
+
+/** 本周内是否包含某日期 */
+function isDateInThisWeek(dateStr: string, weekStart: string): boolean {
+  const start = new Date(weekStart)
+  const d = new Date(dateStr)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  return d >= start && d <= end
+}
+
+/** 近 7 天的日期字符串（从新到旧） */
+function getLast7Days(): string[] {
+  const out: string[] = []
+  for (let i = 0; i < 7; i++) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    out.push(d.toISOString().slice(0, 10))
+  }
+  return out
+}
+
 function getDaysInMonth(year: number, month: number) {
   const first = new Date(year, month - 1, 1)
   const last = new Date(year, month, 0)
@@ -67,6 +97,10 @@ export default function ComparePage() {
     if (!user) return []
     return ratings.filter((r) => r.toUserId === user.id)
   }, [user, ratings])
+  const partnerRatingsReceived = useMemo(() => {
+    if (!partner) return []
+    return ratings.filter((r) => r.toUserId === partner.partnerId)
+  }, [partner, ratings])
   const avgCompleteness = useMemo(() => {
     if (myRatingsReceived.length === 0) return 0
     return myRatingsReceived.reduce((a, r) => a + r.completeness, 0) / myRatingsReceived.length
@@ -75,6 +109,56 @@ export default function ComparePage() {
     if (myRatingsReceived.length === 0) return 0
     return myRatingsReceived.reduce((a, r) => a + r.effort, 0) / myRatingsReceived.length
   }, [myRatingsReceived])
+  const partnerAvgCompleteness = useMemo(() => {
+    if (partnerRatingsReceived.length === 0) return 0
+    return partnerRatingsReceived.reduce((a, r) => a + r.completeness, 0) / partnerRatingsReceived.length
+  }, [partnerRatingsReceived])
+  const partnerAvgEffort = useMemo(() => {
+    if (partnerRatingsReceived.length === 0) return 0
+    return partnerRatingsReceived.reduce((a, r) => a + r.effort, 0) / partnerRatingsReceived.length
+  }, [partnerRatingsReceived])
+
+  const weekStart = useMemo(() => getThisWeekStart(), [])
+  const thisWeekMyCount = useMemo(
+    () => myCheckIns.filter((c) => isDateInThisWeek(c.date, weekStart)).length,
+    [myCheckIns, weekStart]
+  )
+  const thisWeekPartnerCount = useMemo(
+    () => partnerCheckIns.filter((c) => isDateInThisWeek(c.date, weekStart)).length,
+    [partnerCheckIns, weekStart]
+  )
+  const last7Days = useMemo(() => getLast7Days(), [])
+  const myCurrentWeight = myCheckIns[0]?.weight
+  const partnerCurrentWeight = partnerCheckIns[0]?.weight
+  const myWeekFirstWeight = myCheckIns.find((c) => isDateInThisWeek(c.date, weekStart))?.weight ?? myCurrentWeight
+  const partnerWeekFirstWeight =
+    partnerCheckIns.find((c) => isDateInThisWeek(c.date, weekStart))?.weight ?? partnerCurrentWeight
+  const myWeekLost =
+    myWeekFirstWeight != null && myCurrentWeight != null ? myWeekFirstWeight - myCurrentWeight : 0
+  const partnerWeekLost =
+    partnerWeekFirstWeight != null && partnerCurrentWeight != null
+      ? partnerWeekFirstWeight - partnerCurrentWeight
+      : 0
+
+  const latestRatingFromPartner = useMemo(() => {
+    if (!user || !partner) return null
+    const list = ratings
+      .filter((r) => r.fromUserId === partner.partnerId && r.toUserId === user.id)
+      .sort((a, b) => b.checkInDate.localeCompare(a.checkInDate))
+    return list[0] ?? null
+  }, [user, partner, ratings])
+
+  const encouragingMsg = useMemo(() => {
+    if (thisWeekMyCount > thisWeekPartnerCount) {
+      const lead = thisWeekMyCount - thisWeekPartnerCount
+      return `你已领先 ${lead} 天，继续加油！`
+    }
+    if (thisWeekPartnerCount === 0 && thisWeekMyCount === 0) return '本周一起开始打卡吧～'
+    if (thisWeekPartnerCount === 0) return `${partner?.partnerNickname ?? '伙伴'}本周还没打卡，快去提醒 TA`
+    if (thisWeekMyCount === 0) return '本周你还没打卡，今天就开始吧！'
+    if (thisWeekMyCount < thisWeekPartnerCount) return '再打几天就能追上啦，加油！'
+    return '势均力敌，继续保持！'
+  }, [thisWeekMyCount, thisWeekPartnerCount, partner?.partnerNickname])
 
   const thisMonthStr = `${calendarMonth.year}-${String(calendarMonth.month).padStart(2, '0')}`
   const thisMonthCount = myCheckIns.filter((c) => c.date.startsWith(thisMonthStr)).length
@@ -195,72 +279,239 @@ export default function ComparePage() {
       )}
 
       {tab === 'compare' && partner && (
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', marginBottom: 16 }}>
-            <div style={{ textAlign: 'center' }}>
-              <div
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))',
-                  color: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 4px',
-                  fontWeight: 600,
-                }}
-              >
-                {user.nickname.slice(0, 1)}
+        <>
+          {/* 头部：双人头像 + 本周PK柱状图 + 鼓励语 */}
+          <div className="card" style={{ background: 'linear-gradient(135deg, rgba(245,166,35,0.08), rgba(126,211,33,0.06))' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ textAlign: 'center' }}>
+                <div
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, var(--primary), var(--primary-dark))',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 6px',
+                    fontWeight: 600,
+                    fontSize: 20,
+                  }}
+                >
+                  {user.nickname.slice(0, 1)}
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{user.nickname}</div>
               </div>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>{user.nickname}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>本周 {myCheckIns.filter((c) => {
-                const d = new Date(c.date)
-                const now = new Date()
-                const weekStart = new Date(now)
-                weekStart.setDate(now.getDate() - now.getDay())
-                return d >= weekStart
-              }).length} 次</div>
+              <div style={{ flex: 1, maxWidth: 140, padding: '0 12px' }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6, textAlign: 'center' }}>
+                  你 {thisWeekMyCount} 次 vs {partner.partnerNickname} {thisWeekPartnerCount} 次
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 40 }}>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div
+                      style={{
+                        width: '100%',
+                        height: Math.max(8, (thisWeekMyCount / 7) * 32),
+                        maxHeight: 32,
+                        background: 'var(--primary)',
+                        borderRadius: 6,
+                        transition: 'height 0.3s ease',
+                      }}
+                    />
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>我</span>
+                  </div>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div
+                      style={{
+                        width: '100%',
+                        height: Math.max(8, (thisWeekPartnerCount / 7) * 32),
+                        maxHeight: 32,
+                        background: 'var(--secondary)',
+                        borderRadius: 6,
+                        transition: 'height 0.3s ease',
+                      }}
+                    />
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>TA</span>
+                  </div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #5eb8e6, #3a9fd5)',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 6px',
+                    fontWeight: 600,
+                    fontSize: 20,
+                  }}
+                >
+                  {partner.partnerNickname.slice(0, 1)}
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{partner.partnerNickname}</div>
+              </div>
             </div>
-            <div style={{ textAlign: 'center' }}>
-              <div
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: '50%',
-                  background: 'var(--secondary)',
-                  color: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 4px',
-                  fontWeight: 600,
-                }}
-              >
-                {partner.partnerNickname.slice(0, 1)}
-              </div>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>{partner.partnerNickname}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>本周 {partnerCheckIns.filter((c) => {
-                const d = new Date(c.date)
-                const now = new Date()
-                const weekStart = new Date(now)
-                weekStart.setDate(now.getDate() - now.getDay())
-                return d >= weekStart
-              }).length} 次</div>
+            <div style={{ textAlign: 'center', fontSize: 14, color: 'var(--primary)', fontWeight: 500 }}>
+              {encouragingMsg}
             </div>
           </div>
-          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
-            <div style={{ marginBottom: 8 }}>我的评分趋势（收到）</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-              <span>完成度均分</span>
-              <strong>{avgCompleteness.toFixed(1)} 星</strong>
+
+          {/* 核心指标卡片：两人并列 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="card" style={{ borderLeft: '4px solid var(--primary)' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>我的数据</div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>体重变化</div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>{myCurrentWeight != null ? `${myCurrentWeight} kg` : '-'}</div>
+                <div style={{ fontSize: 12, color: myWeekLost > 0 ? 'var(--secondary)' : 'var(--text-muted)' }}>
+                  {myWeekLost > 0 ? `本周 ↓${myWeekLost.toFixed(1)} kg` : '本周持平'}
+                </div>
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>本周打卡</div>
+                <div style={{ height: 8, background: 'var(--bg)', borderRadius: 4, overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: `${(thisWeekMyCount / 7) * 100}%`,
+                      height: '100%',
+                      background: 'var(--primary)',
+                      borderRadius: 4,
+                      transition: 'width 0.3s ease',
+                    }}
+                  />
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{thisWeekMyCount}/7 天</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>收到均分</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 14 }}>完成 {avgCompleteness.toFixed(1)}★</span>
+                  <span style={{ fontSize: 14 }}>努力 {avgEffort.toFixed(1)}★</span>
+                </div>
+              </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-              <span>努力度均分</span>
-              <strong>{avgEffort.toFixed(1)} 星</strong>
+            <div className="card" style={{ borderLeft: '4px solid #5eb8e6' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>{partner.partnerNickname}</div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>体重变化</div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>{partnerCurrentWeight != null ? `${partnerCurrentWeight} kg` : '-'}</div>
+                <div style={{ fontSize: 12, color: partnerWeekLost > 0 ? '#3a9fd5' : 'var(--text-muted)' }}>
+                  {partnerWeekLost > 0 ? `本周 ↓${partnerWeekLost.toFixed(1)} kg` : '本周持平'}
+                </div>
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>本周打卡</div>
+                <div style={{ height: 8, background: 'var(--bg)', borderRadius: 4, overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: `${(thisWeekPartnerCount / 7) * 100}%`,
+                      height: '100%',
+                      background: '#5eb8e6',
+                      borderRadius: 4,
+                      transition: 'width 0.3s ease',
+                    }}
+                  />
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{thisWeekPartnerCount}/7 天</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>收到均分</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 14 }}>完成 {partnerAvgCompleteness.toFixed(1)}★</span>
+                  <span style={{ fontSize: 14 }}>努力 {partnerAvgEffort.toFixed(1)}★</span>
+                </div>
+              </div>
             </div>
           </div>
+
+          {/* 评分趋势：近 7 天两人收到的评分 */}
+          <div className="card">
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>评分趋势（近 7 天收到）</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 80 }}>
+              {last7Days.slice().reverse().map((d) => {
+                const myR = myRatingsReceived.find((r) => r.checkInDate === d)
+                const pr = partnerRatingsReceived.find((r) => r.checkInDate === d)
+                const myVal = myR ? (myR.completeness + myR.effort) / 2 : 0
+                const pVal = pr ? (pr.completeness + pr.effort) / 2 : 0
+                return (
+                  <div key={d} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                    <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 48 }}>
+                      <div
+                        style={{
+                          width: 10,
+                          height: myVal ? (myVal / 5) * 40 : 4,
+                          minHeight: 4,
+                          background: 'var(--primary)',
+                          borderRadius: 4,
+                        }}
+                        title={`${d} 我 ${myVal.toFixed(1)}★`}
+                      />
+                      <div
+                        style={{
+                          width: 10,
+                          height: pVal ? (pVal / 5) * 40 : 4,
+                          minHeight: 4,
+                          background: '#5eb8e6',
+                          borderRadius: 4,
+                        }}
+                        title={`${d} TA ${pVal.toFixed(1)}★`}
+                      />
+                    </div>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{d.slice(5).replace('-', '/')}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+              <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--primary)', marginRight: 4 }} />我</span>
+              <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#5eb8e6', marginRight: 4 }} />{partner.partnerNickname}</span>
+            </div>
+          </div>
+
+          {/* 最新互评展示 */}
+          {latestRatingFromPartner && (
+            <div className="card" style={{ borderLeft: '4px solid var(--secondary)' }}>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>TA 给你的最新评价</div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>{latestRatingFromPartner.checkInDate}</div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                <span>完成度 {latestRatingFromPartner.completeness}★</span>
+                <span>努力度 {latestRatingFromPartner.effort}★</span>
+              </div>
+              {latestRatingFromPartner.comment && (
+                <div style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.5 }}「{latestRatingFromPartner.comment}」</div>
+              )}
+            </div>
+          )}
+
+          {/* 历史对比入口 */}
+          <button
+            type="button"
+            onClick={() => setTab('mine')}
+            style={{
+              width: '100%',
+              padding: '12px 16px',
+              borderRadius: var(--radius),
+              background: 'var(--bg)',
+              color: 'var(--text)',
+              fontWeight: 500,
+              border: '1px solid var(--border)',
+            }}
+          >
+            查看历史对比（打卡日历与累计数据）
+          </button>
+        </>
+      )}
+
+      {tab === 'compare' && !partner && (
+        <div className="card" style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>
+          <div style={{ marginBottom: 8 }}>暂无伙伴</div>
+          <div style={{ fontSize: 14 }}>绑定伙伴后即可在这里查看双方对比</div>
         </div>
       )}
     </div>
