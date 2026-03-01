@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext'
 import { canRate, isRatingExpired, todayStr } from '../storage'
 
 export default function MessagePage() {
-  const { user, partner, ratings, messages, getRating, getPartnerCheckInForDate, getMyCheckInForDate, getRatingFromPartner, submitRating, remindPartnerToRate, markMessageRead } = useApp()
+  const { user, partner, ratings, messages, getRating, getPartnerCheckInForDate, getMyCheckInForDate, getRatingFromPartner, submitRating, remindPartnerToRate, markMessageRead, refresh } = useApp()
 
   const today = todayStr()
   const yesterday = useMemo(() => {
@@ -40,6 +40,8 @@ export default function MessagePage() {
   const [remindLoading, setRemindLoading] = useState(false)
   const [remindTip, setRemindTip] = useState('')
   const [celebrateRating, setCelebrateRating] = useState(false)
+  const [ratingSubmitting, setRatingSubmitting] = useState(false)
+  const [ratingTip, setRatingTip] = useState('')
   const historyRatingRef = useRef<HTMLDivElement>(null)
 
   /** 切换待评/修改的日期或已有评分时，同步表单：修改今日评分时预填，否则默认 3/3/空 */
@@ -78,9 +80,19 @@ export default function MessagePage() {
   }
 
   const handleSubmitRating = async () => {
-    if (!partner || !pendingCheckIn) return
-    await submitRating(partner.partnerId, pendingDate, pendingCheckIn.id, rateComplete, rateEffort, rateComment || undefined)
+    if (!partner || !pendingCheckIn || ratingSubmitting) return
+    setRatingSubmitting(true)
+    setRatingTip('')
+    const res = await submitRating(partner.partnerId, pendingDate, pendingCheckIn.id, rateComplete, rateEffort, rateComment || undefined)
+    setRatingSubmitting(false)
+    if (res && 'error' in res) {
+      setRatingTip(res.error || '提交失败，请重试')
+      return
+    }
+    await refresh()
     setRateComment('')
+    setRatingTip(pendingDate === today && hasRatedToday ? '评分已更新' : '评分已提交')
+    setTimeout(() => setRatingTip(''), 2500)
     setCelebrateRating(true)
     setTimeout(() => setCelebrateRating(false), 1800)
     setTimeout(() => historyRatingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 200)
@@ -207,9 +219,14 @@ export default function MessagePage() {
             style={{ width: '100%', marginBottom: 12 }}
             rows={2}
           />
-          <button type="button" className="btn-primary" onClick={handleSubmitRating}>
-            {pendingDate === today && hasRatedToday ? '更新评分' : '提交评分'}
+          <button type="button" className="btn-primary" onClick={handleSubmitRating} disabled={ratingSubmitting}>
+            {ratingSubmitting ? '提交中…' : (pendingDate === today && hasRatedToday ? '更新评分' : '提交评分')}
           </button>
+          {ratingTip && (
+            <div style={{ marginTop: 10, fontSize: 14, color: ratingTip.startsWith('评分已') ? 'var(--secondary)' : 'var(--danger)' }}>
+              {ratingTip}
+            </div>
+          )}
         </div>
       )}
 

@@ -39,7 +39,7 @@ type AppActions = {
   unbindPartner: () => Promise<void>
   submitCheckIn: (data: Omit<CheckIn, 'id' | 'userId' | 'date' | 'createdAt'>) => Promise<CheckIn | null>
   getCheckIn: (date: string, userId?: string) => CheckIn | undefined
-  submitRating: (toUserId: string, checkInDate: string, checkInId: string, completeness: number, effort: number, comment?: string) => Promise<void>
+  submitRating: (toUserId: string, checkInDate: string, checkInId: string, completeness: number, effort: number, comment?: string) => Promise<{ ok: true } | { error: string }>
   getRating: (checkInDate: string, toUserId: string) => Rating | undefined
   getRatingFromPartner: (checkInDate: string) => Rating | undefined
   remindPartnerToRate: () => Promise<{ ok: true } | { error: string }>
@@ -308,9 +308,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       comment?: string
     ) => {
       const fromId = state.user?.id ?? storage.user.get()?.id
-      if (!fromId) return
+      if (!fromId) return { error: '请先登录' }
       if (state.supabaseMode) {
-        await supabaseUpsertRating(fromId, toUserId, checkInDate, checkInId, completeness, effort, comment)
+        const err = await supabaseUpsertRating(fromId, toUserId, checkInDate, checkInId, completeness, effort, comment)
+        if (err?.error) return { error: err.error }
         const ratings = await supabaseGetRatings()
         setState((s) => ({ ...s, ratings }))
         const partner = state.partner ?? storage.partner.get()
@@ -323,7 +324,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             extra: { checkInDate },
           })
         }
-        return
+        return { ok: true } as const
       }
       const existing = state.ratings.find((r) => r.fromUserId === fromId && r.toUserId === toUserId && r.checkInDate === checkInDate)
       const rating: Rating = {
@@ -343,6 +344,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       list.push(rating)
       setState((s) => ({ ...s, ratings: list }))
       storage.ratings.set(list)
+      return { ok: true } as const
     },
     [state.supabaseMode, state.user?.id, state.ratings]
   )
