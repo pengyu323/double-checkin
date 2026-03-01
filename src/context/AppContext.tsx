@@ -179,7 +179,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const bindByInviteCode = useCallback(
     async (code: string): Promise<{ ok: true } | { error: string }> => {
       if (!state.supabaseMode || !state.user) return { error: '当前为本地模式或未登录' }
-      const result = await supabaseBindByInviteCode(state.user.id, code)
+      const result = await supabaseBindByInviteCode(code)
       if ('error' in result) return result
       setState((s) => ({ ...s, partner: result.partner }))
       return { ok: true }

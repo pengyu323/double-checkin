@@ -127,7 +127,7 @@ export async function supabaseGetPartnerBinding(myUserId: string): Promise<Partn
 }
 
 /** 通过邀请码绑定：写入双向关系，并给邀请码拥有者发「已与你建立伙伴关系」通知 */
-export async function supabaseBindByInviteCode(myUserId: string, inviteCode: string): Promise<{ ok: true; partner: PartnerBinding } | { error: string }> {
+export async function supabaseBindByInviteCode(inviteCode: string): Promise<{ ok: true; partner: PartnerBinding } | { error: string }> {
   if (!supabase) return { error: 'Supabase 未配置' }
   const code = inviteCode.trim().toUpperCase()
   const { data, error } = await supabase.rpc('bind_partner_symmetric', { p_invite_code: code })
