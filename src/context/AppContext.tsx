@@ -43,6 +43,7 @@ type AppActions = {
   getRating: (checkInDate: string, toUserId: string) => Rating | undefined
   getRatingFromPartner: (checkInDate: string) => Rating | undefined
   remindPartnerToRate: () => Promise<{ ok: true } | { error: string }>
+  sendEncourageToPartner: (text: string) => Promise<{ ok: true } | { error: string }>
   addMessage: (msg: Omit<AppMessage, 'id' | 'read' | 'date'>) => void
   markMessageRead: (id: string) => void
   getMyCheckInForDate: (date: string) => CheckIn | undefined
@@ -312,6 +313,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         await supabaseUpsertRating(fromId, toUserId, checkInDate, checkInId, completeness, effort, comment)
         const ratings = await supabaseGetRatings()
         setState((s) => ({ ...s, ratings }))
+        const partner = state.partner ?? storage.partner.get()
+        if (partner && partner.partnerId === toUserId) {
+          const body = `你的 ${checkInDate} 打卡收到了 ${completeness}★ 完成度、${effort}★ 努力度${comment ? `，评语：「${comment}」` : ''}`
+          await supabaseAddMessageForPartner(toUserId, {
+            type: 'partner_rated',
+            title: 'TA 刚刚给你的打卡点了赞',
+            body,
+            extra: { checkInDate },
+          })
+        }
         return
       }
       const existing = state.ratings.find((r) => r.fromUserId === fromId && r.toUserId === toUserId && r.checkInDate === checkInDate)
@@ -403,6 +414,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return { error: '暂无待评分的打卡' }
   }, [state.supabaseMode, state.user, state.partner, state.checkIns, state.ratings])
 
+  const sendEncourageToPartner = useCallback(async (text: string): Promise<{ ok: true } | { error: string }> => {
+    if (!state.supabaseMode || !state.partner) return { error: '未绑定伙伴或非联网模式' }
+    const res = await supabaseAddMessageForPartner(state.partner.partnerId, {
+      type: 'encourage',
+      title: 'TA 夸了你',
+      body: text,
+    })
+    if (res?.error) return { error: res.error }
+    return { ok: true }
+  }, [state.supabaseMode, state.partner])
+
   const addMessage = useCallback(
     (msg: Omit<AppMessage, 'id' | 'read' | 'date'>) => {
       if (state.supabaseMode && state.user) {
@@ -451,6 +473,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       getRating,
       getRatingFromPartner,
       remindPartnerToRate,
+      sendEncourageToPartner,
       addMessage,
       markMessageRead,
       getMyCheckInForDate,
@@ -470,6 +493,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       getRating,
       getRatingFromPartner,
       remindPartnerToRate,
+      sendEncourageToPartner,
       addMessage,
       markMessageRead,
       getMyCheckInForDate,

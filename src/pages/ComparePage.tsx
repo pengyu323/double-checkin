@@ -31,6 +31,17 @@ function getLast7Days(): string[] {
   return out
 }
 
+/** 近 N 天的日期字符串（从新到旧） */
+function getLastNDays(n: number): string[] {
+  const out: string[] = []
+  for (let i = 0; i < n; i++) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    out.push(d.toISOString().slice(0, 10))
+  }
+  return out
+}
+
 function getDaysInMonth(year: number, month: number) {
   const first = new Date(year, month - 1, 1)
   const last = new Date(year, month, 0)
@@ -64,8 +75,9 @@ function getDaysInMonth(year: number, month: number) {
 }
 
 export default function ComparePage() {
-  const { user, partner, checkIns, ratings } = useApp()
+  const { user, partner, checkIns, ratings, sendEncourageToPartner } = useApp()
   const [tab, setTab] = useState<'mine' | 'compare'>('mine')
+  const [encourageSent, setEncourageSent] = useState<string | null>(null)
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const t = new Date()
     return { year: t.getFullYear(), month: t.getMonth() + 1 }
@@ -128,6 +140,103 @@ export default function ComparePage() {
     [partnerCheckIns, weekStart]
   )
   const last7Days = useMemo(() => getLast7Days(), [])
+  const last14Days = useMemo(() => getLastNDays(14), [])
+  const thisWeekMySportMinutes = useMemo(
+    () => myCheckIns.filter((c) => isDateInThisWeek(c.date, weekStart)).reduce((sum, c) => sum + (c.sportMinutes ?? 0), 0),
+    [myCheckIns, weekStart]
+  )
+  const thisWeekPartnerSportMinutes = useMemo(
+    () => partnerCheckIns.filter((c) => isDateInThisWeek(c.date, weekStart)).reduce((sum, c) => sum + (c.sportMinutes ?? 0), 0),
+    [partnerCheckIns, weekStart]
+  )
+  const myWeightsLast14 = useMemo(
+    () => last14Days.map((d) => myCheckIns.find((c) => c.date === d)?.weight).filter((w): w is number => w != null),
+    [last14Days, myCheckIns]
+  )
+  const partnerWeightsLast14 = useMemo(
+    () => last14Days.map((d) => partnerCheckIns.find((c) => c.date === d)?.weight).filter((w): w is number => w != null),
+    [last14Days, partnerCheckIns]
+  )
+  const myWeightTrend = useMemo(() => {
+    if (myWeightsLast14.length < 2) return null
+    const first = myWeightsLast14[myWeightsLast14.length - 1]
+    const last = myWeightsLast14[0]
+    return { first, last, diff: first - last }
+  }, [myWeightsLast14])
+  const partnerWeightTrend = useMemo(() => {
+    if (partnerWeightsLast14.length < 2) return null
+    const first = partnerWeightsLast14[partnerWeightsLast14.length - 1]
+    const last = partnerWeightsLast14[0]
+    return { first, last, diff: first - last }
+  }, [partnerWeightsLast14])
+  const thisWeekDates = useMemo(() => {
+    const start = new Date(weekStart)
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(start)
+      d.setDate(start.getDate() + i)
+      return d.toISOString().slice(0, 10)
+    })
+  }, [weekStart])
+  const myMealComplete = useMemo(() => {
+    let filled = 0
+    let total = 0
+    thisWeekDates.forEach((d) => {
+      const c = myCheckIns.find((x) => x.date === d)
+      if (c) {
+        total += 3
+        if (c.breakfast) filled += 1
+        if (c.lunch) filled += 1
+        if (c.dinner) filled += 1
+      }
+    })
+    return total > 0 ? Math.round((filled / total) * 100) : 0
+  }, [myCheckIns, thisWeekDates])
+  const partnerMealComplete = useMemo(() => {
+    let filled = 0
+    let total = 0
+    thisWeekDates.forEach((d) => {
+      const c = partnerCheckIns.find((x) => x.date === d)
+      if (c) {
+        total += 3
+        if (c.breakfast) filled += 1
+        if (c.lunch) filled += 1
+        if (c.dinner) filled += 1
+      }
+    })
+    return total > 0 ? Math.round((filled / total) * 100) : 0
+  }, [partnerCheckIns, thisWeekDates])
+
+  const last4WeeksStart = useMemo(() => {
+    const out: string[] = []
+    for (let i = 0; i < 4; i++) {
+      const d = new Date(weekStart)
+      d.setDate(d.getDate() - i * 7)
+      out.push(d.toISOString().slice(0, 10))
+    }
+    return out
+  }, [weekStart])
+  const last4WeeksStats = useMemo(() => {
+    return last4WeeksStart.map((start) => {
+      const end = new Date(start)
+      end.setDate(end.getDate() + 6)
+      const endStr = end.toISOString().slice(0, 10)
+      const myInWeek = myCheckIns.filter((c) => c.date >= start && c.date <= endStr)
+      const partnerInWeek = partnerCheckIns.filter((c) => c.date >= start && c.date <= endStr)
+      const myFirstW = myInWeek.length ? myInWeek.reduce((a, c) => (c.date < a.date ? c : a)).weight : null
+      const myLastW = myInWeek.length ? myInWeek.reduce((a, c) => (c.date > a.date ? c : a)).weight : null
+      const partnerFirstW = partnerInWeek.length ? partnerInWeek.reduce((a, c) => (c.date < a.date ? c : a)).weight : null
+      const partnerLastW = partnerInWeek.length ? partnerInWeek.reduce((a, c) => (c.date > a.date ? c : a)).weight : null
+      return {
+        start,
+        end: endStr,
+        label: `${start.slice(5)}～${endStr.slice(5)}`,
+        myCount: myInWeek.length,
+        partnerCount: partnerInWeek.length,
+        myLost: myFirstW != null && myLastW != null ? myFirstW - myLastW : null,
+        partnerLost: partnerFirstW != null && partnerLastW != null ? partnerFirstW - partnerLastW : null,
+      }
+    })
+  }, [last4WeeksStart, myCheckIns, partnerCheckIns])
   const myCurrentWeight = myCheckIns[0]?.weight
   const partnerCurrentWeight = partnerCheckIns[0]?.weight
   const myWeekFirstWeight = myCheckIns.find((c) => isDateInThisWeek(c.date, weekStart))?.weight ?? myCurrentWeight
@@ -360,6 +469,31 @@ export default function ComparePage() {
             <div style={{ textAlign: 'center', fontSize: 14, color: 'var(--primary)', fontWeight: 500 }}>
               {encouragingMsg}
             </div>
+            <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+              {['你的运动量太强了！', '坚持得真好～', '一起加油！', '今天也很棒！', '给你点赞 👍'].map((text) => (
+                <button
+                  key={text}
+                  type="button"
+                  onClick={async () => {
+                    const res = await sendEncourageToPartner(text)
+                    if (res && 'ok' in res) {
+                      setEncourageSent(text)
+                      setTimeout(() => setEncourageSent(null), 2000)
+                    }
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: 12,
+                    borderRadius: 20,
+                    background: encourageSent === text ? 'var(--secondary)' : 'var(--bg)',
+                    color: encourageSent === text ? '#fff' : 'var(--text)',
+                    border: '1px solid var(--border)',
+                  }}
+                >
+                  {encourageSent === text ? '已发送' : text}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* 核心指标卡片：两人并列 */}
@@ -430,6 +564,79 @@ export default function ComparePage() {
             </div>
           </div>
 
+          {/* 运动时长对比：本周总运动分钟 */}
+          <div className="card">
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>本周运动时长</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 44 }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div
+                  style={{
+                    width: '100%',
+                    height: Math.max(8, Math.min(36, (thisWeekMySportMinutes / 120) * 36)),
+                    background: 'var(--primary)',
+                    borderRadius: 6,
+                  }}
+                />
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>我 {thisWeekMySportMinutes} 分钟</span>
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div
+                  style={{
+                    width: '100%',
+                    height: Math.max(8, Math.min(36, (thisWeekPartnerSportMinutes / 120) * 36)),
+                    background: '#5eb8e6',
+                    borderRadius: 6,
+                  }}
+                />
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{partner.partnerNickname} {thisWeekPartnerSportMinutes} 分钟</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 近 14 天体重趋势 */}
+          <div className="card">
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>近 14 天体重趋势</div>
+            <div style={{ display: 'flex', justifyContent: 'space-around', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 13 }}>
+                <span style={{ color: 'var(--text-muted)' }}>我：</span>
+                {myWeightTrend != null ? (
+                  <span>{myWeightTrend.first.toFixed(1)} → {myWeightTrend.last.toFixed(1)} kg {myWeightTrend.diff > 0 ? `↓${myWeightTrend.diff.toFixed(1)}` : myWeightTrend.diff < 0 ? `↑${(-myWeightTrend.diff).toFixed(1)}` : '持平'}</span>
+                ) : (
+                  <span style={{ color: 'var(--text-muted)' }}>数据不足</span>
+                )}
+              </div>
+              <div style={{ fontSize: 13 }}>
+                <span style={{ color: 'var(--text-muted)' }}>{partner.partnerNickname}：</span>
+                {partnerWeightTrend != null ? (
+                  <span>{partnerWeightTrend.first.toFixed(1)} → {partnerWeightTrend.last.toFixed(1)} kg {partnerWeightTrend.diff > 0 ? `↓${partnerWeightTrend.diff.toFixed(1)}` : partnerWeightTrend.diff < 0 ? `↑${(-partnerWeightTrend.diff).toFixed(1)}` : '持平'}</span>
+                ) : (
+                  <span style={{ color: 'var(--text-muted)' }}>数据不足</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 饮食打卡完整性 */}
+          <div className="card">
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>本周饮食打卡完整度</div>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>我</div>
+                <div style={{ height: 10, background: 'var(--bg)', borderRadius: 5, overflow: 'hidden' }}>
+                  <div style={{ width: `${myMealComplete}%`, height: '100%', background: 'var(--primary)', borderRadius: 5, transition: 'width 0.3s' }} />
+                </div>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{myMealComplete}%</span>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>{partner.partnerNickname}</div>
+                <div style={{ height: 10, background: 'var(--bg)', borderRadius: 5, overflow: 'hidden' }}>
+                  <div style={{ width: `${partnerMealComplete}%`, height: '100%', background: '#5eb8e6', borderRadius: 5, transition: 'width 0.3s' }} />
+                </div>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{partnerMealComplete}%</span>
+              </div>
+            </div>
+          </div>
+
           {/* 评分趋势：近 7 天两人收到的评分 */}
           <div className="card">
             <div style={{ fontWeight: 600, marginBottom: 12 }}>评分趋势（近 7 天收到）</div>
@@ -488,6 +695,30 @@ export default function ComparePage() {
               )}
             </div>
           )}
+
+          {/* 近 4 周历史概览 */}
+          <div className="card">
+            <div style={{ fontWeight: 600, marginBottom: 12 }}>近 4 周概览</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>每周：打卡天数 · 当周体重变化</div>
+            {last4WeeksStats.map((w) => (
+              <div
+                key={w.start}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '8px 0',
+                  borderBottom: '1px solid var(--border)',
+                }}
+              >
+                <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{w.label}</span>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <span>我 {w.myCount} 天 {w.myLost != null ? (w.myLost > 0 ? `↓${w.myLost.toFixed(1)}` : w.myLost < 0 ? `↑${(-w.myLost).toFixed(1)}` : '持平') : '-'}</span>
+                  <span>{partner?.partnerNickname} {w.partnerCount} 天 {w.partnerLost != null ? (w.partnerLost > 0 ? `↓${w.partnerLost.toFixed(1)}` : w.partnerLost < 0 ? `↑${(-w.partnerLost).toFixed(1)}` : '持平') : '-'}</span>
+                </div>
+              </div>
+            ))}
+          </div>
 
           {/* 历史对比入口 */}
           <button

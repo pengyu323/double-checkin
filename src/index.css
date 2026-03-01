@@ -190,3 +190,50 @@ a {
 .star-rating .star:active {
   transform: scale(1.2);
 }
+
+/* 提交评分后历史评分区域的庆祝微动画 */
+.rating-celebrate {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--radius);
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 30%, rgba(126, 211, 33, 0.2), transparent 55%);
+  animation: ratingCelebrateFade 1.8s ease-out forwards;
+}
+
+.rating-celebrate::before,
+.rating-celebrate::after {
+  content: '★';
+  position: absolute;
+  font-size: 20px;
+  color: var(--primary);
+  opacity: 0.9;
+  animation: starFall 1.5s ease-in forwards;
+}
+
+.rating-celebrate::before {
+  left: 15%;
+  top: -10px;
+  animation-delay: 0.1s;
+}
+
+.rating-celebrate::after {
+  right: 15%;
+  top: -10px;
+  animation-delay: 0.25s;
+}
+
+@keyframes ratingCelebrateFade {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes starFall {
+  0% { transform: translateY(0) scale(1); opacity: 0.9; }
+  100% { transform: translateY(80px) scale(0.6); opacity: 0; }
+}

@@ -55,7 +55,7 @@ export interface Rating {
 /** 消息/通知 */
 export interface AppMessage {
   id: string
-  type: 'remind_checkin' | 'remind_rate' | 'partner_done' | 'bind' | 'unbind'
+  type: 'remind_checkin' | 'remind_rate' | 'partner_done' | 'bind' | 'unbind' | 'partner_rated' | 'encourage'
   title: string
   body?: string
   date: string

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { canRate, isRatingExpired, todayStr } from '../storage'
 
@@ -39,6 +39,8 @@ export default function MessagePage() {
   const [rateComment, setRateComment] = useState('')
   const [remindLoading, setRemindLoading] = useState(false)
   const [remindTip, setRemindTip] = useState('')
+  const [celebrateRating, setCelebrateRating] = useState(false)
+  const historyRatingRef = useRef<HTMLDivElement>(null)
 
   /** 切换待评/修改的日期或已有评分时，同步表单：修改今日评分时预填，否则默认 3/3/空 */
   useEffect(() => {
@@ -52,6 +54,18 @@ export default function MessagePage() {
       setRateComment('')
     }
   }, [pendingDate, today, hasRatedToday])
+
+  /** 智能提醒：当日 20:00 后若伙伴仍未评今日打卡，自动发一条温和提醒（每天最多一次） */
+  useEffect(() => {
+    if (!partner || !myTodayCheckIn || partnerRatedMyToday) return
+    const hour = new Date().getHours()
+    if (hour < 20) return
+    const key = `double_checkin_auto_remind_${today}`
+    if (localStorage.getItem(key)) return
+    remindPartnerToRate().then((res) => {
+      if (res && 'ok' in res) localStorage.setItem(key, 'sent')
+    })
+  }, [today, partner, myTodayCheckIn, partnerRatedMyToday, remindPartnerToRate])
 
   const handleRemindPartner = async () => {
     if (!canRemindPartner || remindLoading) return
@@ -67,6 +81,9 @@ export default function MessagePage() {
     if (!partner || !pendingCheckIn) return
     await submitRating(partner.partnerId, pendingDate, pendingCheckIn.id, rateComplete, rateEffort, rateComment || undefined)
     setRateComment('')
+    setCelebrateRating(true)
+    setTimeout(() => setCelebrateRating(false), 1800)
+    setTimeout(() => historyRatingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 200)
   }
 
   const myRatingsGiven = useMemo(() => {
@@ -168,6 +185,21 @@ export default function MessagePage() {
               ))}
             </div>
           </div>
+          <div style={{ marginBottom: 6 }}>
+            <span style={{ fontSize: 14 }}>鼓励或建议（选填）</span>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6, marginBottom: 6 }}>
+              {['💪', '🔥', '👍', '🏆', '❤️', '✨', '🌟', '💯'].map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => setRateComment((prev) => prev + emoji)}
+                  style={{ fontSize: 20, padding: '4px 8px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8 }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
           <textarea
             placeholder="写一句鼓励或建议（选填）"
             value={rateComment}
@@ -206,7 +238,8 @@ export default function MessagePage() {
         )}
       </div>
 
-      <div className="card">
+      <div className="card" ref={historyRatingRef} style={{ position: 'relative' }}>
+        {celebrateRating && <div className="rating-celebrate" aria-hidden />}
         <div style={{ fontWeight: 600, marginBottom: 12 }}>历史评分</div>
         {myRatingsGiven.length === 0 ? (
           <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>暂无评分记录</p>
