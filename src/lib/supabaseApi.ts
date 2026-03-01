@@ -126,28 +126,24 @@ export async function supabaseGetPartnerBinding(myUserId: string): Promise<Partn
   }
 }
 
-/** 通过邀请码绑定：邀请码是对方的 invite_code */
+/** 通过邀请码绑定：写入双向关系，并给邀请码拥有者发「已与你建立伙伴关系」通知 */
 export async function supabaseBindByInviteCode(myUserId: string, inviteCode: string): Promise<{ ok: true; partner: PartnerBinding } | { error: string }> {
   if (!supabase) return { error: 'Supabase 未配置' }
   const code = inviteCode.trim().toUpperCase()
-  const { data: partnerProfile } = await supabase
-    .from('profiles')
-    .select('id,nickname,avatar_url,invite_code')
-    .eq('invite_code', code)
-    .maybeSingle()
-  if (!partnerProfile) return { error: '邀请码不存在或无效' }
-  if (partnerProfile.id === myUserId) return { error: '不能绑定自己' }
-
-  const { error } = await supabase.from('partner_bindings').upsert(
-    { user_id: myUserId, partner_id: partnerProfile.id },
-    { onConflict: 'user_id' }
-  )
-  if (error) return { error: error.message }
+  const { data, error } = await supabase.rpc('bind_partner_symmetric', { p_invite_code: code })
+  if (error) {
+    const msg = error.message || ''
+    if (msg.includes('invite_code_invalid')) return { error: '邀请码不存在或无效' }
+    if (msg.includes('cannot_bind_self')) return { error: '不能绑定自己' }
+    return { error: msg || '绑定失败' }
+  }
+  if (!data || typeof data !== 'object') return { error: '绑定失败' }
+  const row = data as { id: string; nickname: string; avatar_url: string | null; invite_code: string }
   const partner: PartnerBinding = {
-    partnerId: partnerProfile.id,
-    partnerNickname: partnerProfile.nickname,
-    partnerAvatar: partnerProfile.avatar_url || '',
-    partnerInviteCode: partnerProfile.invite_code,
+    partnerId: row.id,
+    partnerNickname: row.nickname,
+    partnerAvatar: row.avatar_url || '',
+    partnerInviteCode: row.invite_code,
     boundAt: new Date().toISOString(),
   }
   return { ok: true, partner }
