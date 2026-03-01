@@ -88,12 +88,35 @@ export default function MessagePage() {
         <div className="card" style={{ border: '2px solid var(--primary)' }}>
           <div style={{ fontWeight: 600, marginBottom: 8 }}>待评分 · {pendingLabel}</div>
           <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 12 }}>
-            <div style={{ marginBottom: 4 }}>{pendingDate}</div>
-            <div>体重 {pendingCheckIn.weight ?? '-'} kg，体脂 {pendingCheckIn.bodyFat ?? '-'}%</div>
-            <div>运动 {pendingCheckIn.sportType ?? '-'} {pendingCheckIn.sportMinutes ?? 0} 分钟</div>
-            <div>早/午/晚 {pendingCheckIn.breakfast || '-'} / {pendingCheckIn.lunch || '-'} / {pendingCheckIn.dinner || '-'}</div>
-            <div>饮水 {pendingCheckIn.waterCups ?? '-'} 杯{pendingCheckIn.waterMl ? ` ${pendingCheckIn.waterMl} ml` : ''}，睡眠 {pendingCheckIn.sleepHours ?? '-'} 小时</div>
-            <div>心情 {pendingCheckIn.mood || '-'}</div>
+            {(() => {
+              const c = pendingCheckIn
+              const filledBg = 'rgba(255, 193, 7, 0.25)'
+              const emptyBg = 'rgba(244, 67, 54, 0.2)'
+              const row = (label: string, value: string | number | undefined | null, suffix = '') => {
+                const filled = value !== undefined && value !== null && value !== ''
+                const text = filled ? `${value}${suffix}` : '对方没有填写'
+                return (
+                  <div key={label} style={{ marginBottom: 6, display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: 4 }}>
+                    <span style={{ minWidth: 56 }}>{label}：</span>
+                    <span style={{ padding: '2px 6px', borderRadius: 4, backgroundColor: filled ? filledBg : emptyBg }}>{text}</span>
+                  </div>
+                )
+              }
+              return (
+                <>
+                  <div key="日期" style={{ marginBottom: 6 }}>日期：{pendingDate}</div>
+                  {row('体重', c.weight != null ? c.weight : undefined, ' kg')}
+                  {row('体脂', c.bodyFat != null ? c.bodyFat : undefined, '%')}
+                  {row('运动', c.sportType || (c.sportMinutes != null) ? `${c.sportType ?? '-'} ${c.sportMinutes ?? 0} 分钟` : undefined)}
+                  {row('早餐', c.breakfast || undefined)}
+                  {row('午餐', c.lunch || undefined)}
+                  {row('晚餐', c.dinner || undefined)}
+                  {row('饮水', (c.waterCups != null) || (c.waterMl != null) ? `${c.waterCups ?? 0} 杯${c.waterMl ? ` ${c.waterMl} ml` : ''}` : undefined)}
+                  {row('睡眠', c.sleepHours != null ? c.sleepHours : undefined, ' 小时')}
+                  {row('心情', c.mood || undefined)}
+                </>
+              )
+            })()}
           </div>
           <div style={{ marginBottom: 8 }}>
             <span style={{ fontSize: 14 }}>完成度</span>
